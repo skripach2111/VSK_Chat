@@ -9,13 +9,14 @@ Client::Client(QWidget *parent) :
 
     connect(ui->lE_message, SIGNAL(returnPressed()), this, SLOT(slotEnterPressed()));
 
-    popupMessage = new PopUp();
-
     nNextBlockSize = 0;
+
+    popupMessage = new PopUp();
 }
 
 Client::~Client()
 {
+
     delete popupMessage;
     delete ui;
 }
@@ -40,12 +41,12 @@ void Client::on_pB_connect_clicked()
 void Client::slotConnected()
 {
     QByteArray block;
-    QDataStream out(&block, QIODevice::WriteOnly);
+    QByteArray message;
+    QDataStream out(&message, QIODevice::WriteOnly);
 
-    out << (quint16)0 << AUTH << name;
+    out << name;
 
-    out.device()->seek(0);
-    out << (quint16)(block.size() - sizeof(quint16));
+    GenerateMessage(1, message, block);
 
     pSocket->write(block);
 
@@ -76,56 +77,112 @@ void Client::slotReadyRead()
             break;
         }
 
-        int COMMAND;
+        int messenger;
+        in >> messenger;
 
-        in >> COMMAND;
-
-        switch (COMMAND)
+        if(messenger%2 == 0)
         {
-        case LISTEN:
-        {
-            QString message;
+            int COMMAND;
+            in >> COMMAND;
 
-            in >> message;
-
-            ui->lW_chat->addItem(message);
-            ui->lW_chat->scrollToBottom();
-
-            if(!this->isActiveWindow())
+            if(COMMAND == AUTH || COMMAND == LISTEN || COMMAND == ONLINE || COMMAND == HISTORY_MESSAGE)
             {
-                QApplication::alert(this);
-                popupMessage->setPopupText(message);
-                popupMessage->show();
+                in >> messenger;
+
+                if(messenger%2 != 0)
+                {
+                    unsigned int size_message;
+                    in >> size_message;
+
+                    char *message = new char [size_message];
+                    //QByteArray message;
+
+                    in.readBytes(message, size_message);
+
+                    in >> messenger;
+
+                    if(messenger%2 == 0)
+                    {
+                        for(int i = 0; i < size_message; i++)
+                            message[i] = message[i]*messenger-size_message;
+
+                        switch (COMMAND)
+                        {
+                        case LISTEN:
+                        {
+                            ui->lW_chat->addItem(message);
+                            ui->lW_chat->scrollToBottom();
+
+                            if(!this->isActiveWindow())
+                            {
+                                popupMessage->setPopupText(message);
+                                popupMessage->show();
+                                QApplication::alert(this);
+                            }
+
+                            break;
+                        }
+                        case ONLINE:
+                        {
+                            QByteArray mes;
+                            QDataStream out(&mes, QIODevice::ReadWrite);
+
+                            out << message;
+
+                            QStringList listUsers;
+                            out >> listUsers;
+
+                            in >> listUsers;
+
+                            ui->lW_online->clear();
+                            ui->lW_online->addItems(listUsers);
+
+                            break;
+                        }
+                            //        case OK_DISK:
+                            //        {
+                            //            pSocket->disconnected();
+                            //            delete pSocket;
+
+
+                            //            break;
+                            //        }
+                        case HISTORY_MESSAGE:
+                        {
+                            QByteArray mes;
+                            QDataStream out(&mes, QIODevice::ReadWrite);
+
+                            out << message;
+
+                            QStringList tmp;
+                            out >> tmp;
+
+                            ui->lW_chat->addItems(tmp);
+
+                            ui->lW_chat->scrollToBottom();
+
+                            break;
+                        }
+                        case ERROR:
+                        {
+                            QMessageBox msgBox;
+                            msgBox.setText("Error!");
+                            msgBox.setInformativeText(message);
+                            msgBox.setStandardButtons(QMessageBox::Ok);
+                            msgBox.setIcon(QMessageBox::Critical);
+                            msgBox.setDefaultButton(QMessageBox::Ok);
+                            msgBox.exec();
+
+                        break;
+                        }
+                        default:
+                        {
+                            break;
+                        }
+                        }
+                    }
+                }
             }
-
-            break;
-        }
-        case ONLINE:
-        {
-            QStringList listUsers;
-
-            in >> listUsers;
-
-            ui->lW_online->clear();
-            ui->lW_online->addItems(listUsers);
-
-            break;
-        }
-        case HISTORY_MESSAGE:
-        {
-            QStringList tmp;
-            in >> tmp;
-
-            ui->lW_chat->addItems(tmp);
-
-            ui->lW_chat->scrollToBottom();
-
-            break;
-        }
-        default:
-        {
-            break;
-        }
         }
 
         nNextBlockSize = 0;
@@ -171,6 +228,16 @@ void Client::slotDisconnected()
 
 void Client::on_pB_disconnect_clicked()
 {
+    //    QByteArray block;
+    //    QDataStream out(&block, QIODevice::WriteOnly);
+
+    //    out << (quint16)0 << DISC << name;
+
+    //    out.device()->seek(0);
+    //    out << (quint16)(block.size() - sizeof(quint16));
+
+    //    pSocket->write(block);
+
     slotDisconnected();
 }
 
@@ -179,22 +246,16 @@ void Client::on_pB_send_clicked()
 {
     if(ui->lE_message->text().size() != 0)
     {
-        QString message;
-        message = name + ": " + ui->lE_message->text();
+        QByteArray message;
+        QDataStream out(&message, QIODevice::WriteOnly);
+        out << name << ": " << ui->lE_message->text();
 
-        for(int i = 49; i < message.size(); i += 50)
-            message.insert(i, "\n");
+        //        for(int i = 49; i < message.size(); i += 50)
+        //            message.insert(i, "\n");
 
         QByteArray block;
-        QDataStream out(&block, QIODevice::WriteOnly);
 
-        message = name + ": " + ui->lE_message->text();
-
-        out << (quint16)0 << LISTEN << message;
-
-        out.device()->seek(0);
-
-        out << (quint16)(block.size() - sizeof(quint16));
+        GenerateMessage(LISTEN, message, block);
         pSocket->write(block);
 
         ui->lE_message->setText("");
@@ -204,4 +265,40 @@ void Client::on_pB_send_clicked()
 void Client::slotEnterPressed()
 {
     on_pB_send_clicked();
+}
+
+void GenerateMessage(int COMMAND, QByteArray &message, QByteArray &block)
+{
+    QDataStream out(&block, QIODevice::WriteOnly);
+    int messenger;
+
+    do
+    {
+        messenger = 0 + rand() % 32767;
+    }
+    while(messenger%2 == 0);
+
+    out << (quint16)0 << messenger << COMMAND;
+
+    do
+    {
+        messenger = 0 + rand() % 32767;
+    }
+    while(messenger%2 != 0);
+
+    out << messenger << message.size();
+
+    do
+    {
+        messenger = 0 + rand() % 32767;
+    }
+    while(messenger%2 == 0);
+
+    for(int i = 0; i < message.size(); i++)
+        message[i] = (message[i] + message.size())/messenger;
+
+    out << message << messenger;
+
+    out.device()->seek(0);
+    out << (quint16)(block.size() - sizeof(quint16));
 }

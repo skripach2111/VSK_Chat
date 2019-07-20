@@ -52,7 +52,9 @@ public:
     void doSendToClientsOnline();
     void doSendToClientDisconnect(QTcpSocket *pSocket);
     void doSendToClientHystoryMessage(QTcpSocket *pSocket);
-    void DisconnectClient(int number);
+    void DisconnectClient(QTcpSocket *pSocket);
+    void doSendError(QTcpSocket *pSocket, QString message);
+    void GenerateMessage(int COMMAND, QByteArray &message, QByteArray &block);
 
 private:
     Ui::Server *ui;
