@@ -41,6 +41,7 @@ class Server : public QDialog
     QStringList listClientsName;
     QStringList listMessage;
     vector <Client> listClients;
+    vector <Client> listTmpClients;
     int nCountOnline;
     QTime timeStart;
     QTimer *timer;

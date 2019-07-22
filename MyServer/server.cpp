@@ -67,7 +67,7 @@ void Server::slotNewConnection()
     connect(tmp_client.pSocket, SIGNAL(disconnected()), tmp_client.pSocket, SLOT(deleteLater()));
     connect(tmp_client.pSocket, SIGNAL(readyRead()), this, SLOT(slotReadClient()));
 
-    listClients.push_back(tmp_client);
+    listTmpClients.push_back(tmp_client);
 
     //doSendToClientHystoryMessage(tmp_client.pSocket);
 }
@@ -89,101 +89,114 @@ void Server::slotReadClient()
 
         if (pClientSocket->bytesAvailable() < nNextBlockSize)
             break;
-//        else{
-//            nNextBlockSize = 0;
-//            break;
-//        }
+        //        else{
+        //            nNextBlockSize = 0;
+        //            break;
+        //        }
 
-    int messenger;
-    in >> messenger;
+        int messenger;
+        in >> messenger;
 
-    if(messenger%2 == 0)
-    {
-        int COMMAND;
-        in >> COMMAND;;
-
-        if(COMMAND == AUTH || COMMAND == LISTEN)
+        if(messenger%2 == 0)
         {
-            in >> messenger;
+            int COMMAND;
+            in >> COMMAND;;
 
-            if(messenger%2 != 0)
+            if(COMMAND == AUTH || COMMAND == LISTEN)
             {
-                unsigned int size_message;
-                in >> size_message;
-
-                QByteArray encrypted_message;
-
-                in >> encrypted_message;
                 in >> messenger;
 
-                if(messenger%2 == 0)
+                if(messenger%2 != 0)
                 {
-                    for(int i = 0; i < (int)(encrypted_message.size()/2); i += 2)
+                    unsigned int size_message;
+                    in >> size_message;
+
+                    QByteArray encrypted_message;
+
+                    in >> encrypted_message;
+                    in >> messenger;
+
+                    if(messenger%2 == 0)
                     {
+                        for(int i = 0; i < (int)(encrypted_message.size()/2); i += 2)
+                        {
                             char byte;
                             byte = encrypted_message[i];
                             encrypted_message[i] = encrypted_message[encrypted_message.size()-1-i];
                             encrypted_message[encrypted_message.size()-1-i] = byte;
-                    }
-
-                    for(int i = encrypted_message.size()-2; i >= 0; i--)
-                        encrypted_message[i] = encrypted_message[i] - encrypted_message[i+1];
-
-                    QDataStream input_message(&encrypted_message, QIODevice::ReadOnly);
-                    QString message;
-                    input_message >> message;
-
-                    switch (COMMAND)
-                    {
-                    case AUTH:
-                    {
-                        bool correct = true;
-
-                        for(int i = 0; i < listClientsName.size(); i++)
-                            if(message == listClientsName[i])
-                                doSendError(listClients[listClients.size()-1].pSocket, "Пользователь с таким именем уже есть в чате.");
-
-                        if(correct)
-                        {
-                            listClients[listClients.size()-1].name = message;
-                            listClientsName.append(message);
-                            doSendToClientsOnline();
-
-                            ui->lW_logs->addItem("Client connected! Name: " + listClientsName[listClientsName.size()-1]);
-                            ui->lW_logs->scrollToBottom();
-
-                            nCountOnline++;
-                            ui->l_online->setText("Online: " + QVariant(nCountOnline).toString());
-
-                            doSendToClientHystoryMessage(listClients[listClients.size()-1].pSocket);
                         }
-                        else
-                            DisconnectClient(pClientSocket);
 
-                        break;
-                    }
-                    case LISTEN:
-                    {
-                        QString buff;
-                        buff = QTime::currentTime().toString() + " ";
+                        for(int i = encrypted_message.size()-2; i >= 0; i--)
+                            encrypted_message[i] = encrypted_message[i] - encrypted_message[i+1];
 
-                        for(int i = 0; i < listClients.size(); i++)
-                            if(pClientSocket == listClients[i].pSocket)
+                        QDataStream input_message(&encrypted_message, QIODevice::ReadOnly);
+                        QString message;
+                        input_message >> message;
+
+                        switch (COMMAND)
+                        {
+                        case AUTH:
+                        {
+                            bool correct = true;
+
+                            for(int i = 0; i < listClientsName.size(); i++)
+                                if(message == listClientsName[i])
+                                {
+                                    doSendError(pClientSocket, "Пользователь с таким именем уже есть в чате.");
+                                    correct = false;
+                                }
+
+                            if(correct)
                             {
-                                buff = buff + listClients[i].name + ": " + message;
-                                i = listClients.size();
+                                for(int i = 0; i < listTmpClients.size(); i++)
+                                    if(pClientSocket == listTmpClients[i].pSocket)
+                                    {
+                                        listTmpClients[i].name = message;
+                                        listClients.push_back(listTmpClients[i]);
+                                        listTmpClients.erase(listTmpClients.begin()+i);
+                                    }
+
+                                listClientsName.append(message);
+                                doSendToClientsOnline();
+
+                                ui->lW_logs->addItem("Client connected! Name: " + listClientsName[listClientsName.size()-1]);
+                                ui->lW_logs->scrollToBottom();
+
+                                nCountOnline++;
+                                ui->l_online->setText("Online: " + QVariant(nCountOnline).toString());
+
+                                doSendToClientHystoryMessage(listClients[listClients.size()-1].pSocket);
                             }
+                            else
+                                pClientSocket->disconnect();
 
-                        listMessage.push_back(buff);
-                        doSendToClientsMessage(buff);
+                            break;
+                        }
+                        case LISTEN:
+                        {
+                            QString buff;
+                            buff = QTime::currentTime().toString() + " ";
 
-                        break;
+                            for(int i = 0; i < listClients.size(); i++)
+                                if(pClientSocket == listClients[i].pSocket)
+                                {
+                                    buff = buff + listClients[i].name + ": " + message;
+                                    i = listClients.size();
+                                }
+
+                            listMessage.push_back(buff);
+                            doSendToClientsMessage(buff);
+
+                            break;
+                        }
+                        default:
+                        {
+                            break;
+                        }
+                        }
                     }
-                    default:
-                    {
-                        break;
-                    }
-                    }
+                    else
+                        DisconnectClient(pClientSocket);
                 }
                 else
                     DisconnectClient(pClientSocket);
@@ -193,11 +206,8 @@ void Server::slotReadClient()
         }
         else
             DisconnectClient(pClientSocket);
-    }
-    else
-        DisconnectClient(pClientSocket);
 
-    nNextBlockSize = 0;
+        nNextBlockSize = 0;
 
     }
 }
@@ -287,6 +297,11 @@ void Server::slotUpdateTimer()
 
     if(listMessage.size() >= 1024)
         listMessage.erase(listMessage.begin(), listMessage.begin() + 512);
+
+    for(int i = 0; i < listTmpClients.size(); i++)
+        listTmpClients[i].pSocket->disconnect();
+
+    listTmpClients.clear();
 }
 
 void Server::doSendToClientDisconnect(QTcpSocket *pSocket)
@@ -335,12 +350,9 @@ void Server::DisconnectClient(QTcpSocket *pSocket)
             ui->lW_logs->addItem(listClients[i].name + " disconnected...");
             listClients[i].pSocket->disconnected();
             listClients.erase(listClients.begin()+i);
-            if(i < listClientsName.size())
-            {
-                listClientsName.erase(listClientsName.begin()+i);
-                nCountOnline--;
-                ui->l_online->setText("Online: " + QVariant(nCountOnline).toString());
-            }
+            listClientsName.erase(listClientsName.begin()+i);
+            nCountOnline--;
+            ui->l_online->setText("Online: " + QVariant(nCountOnline).toString());
 
             i = listClients.size();
         }
@@ -395,10 +407,10 @@ void Server::GenerateMessage(int COMMAND, QByteArray &message, QByteArray &block
 
     for(int i = 0; i < (int)(message.size()/2); i += 2)
     {
-            char byte;
-            byte = message[i];
-            message[i] = message[message.size()-1-i];
-            message[message.size()-1-i] = byte;
+        char byte;
+        byte = message[i];
+        message[i] = message[message.size()-1-i];
+        message[message.size()-1-i] = byte;
     }
 
     out << message << messenger;

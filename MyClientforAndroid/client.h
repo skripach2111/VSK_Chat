@@ -6,10 +6,6 @@
 #include <QTime>
 #include <QMessageBox>
 #include <QNetworkInterface>
-#include <QDesktopWidget>
-#include <QScreen>
-#include <QtAndroidExtras>
-#include <notification.h>
 
 enum COMMAND { AUTH = 1, ONLINE = 2, LISTEN = 3, DISC = 4, OK_DISK = 5, HISTORY_MESSAGE = 6, ERROR = 202};
 
@@ -44,5 +40,7 @@ private slots:
     void on_pB_send_clicked();
     void slotEnterPressed();
 };
+
+void GenerateMessage(int COMMAND, QByteArray &message, QByteArray &block);
 
 #endif // CLIENT_H
