@@ -59,133 +59,139 @@ void Client::slotConnected()
 void Client::slotReadyRead()
 {
     QDataStream in(pSocket);
-    in.setVersion(QDataStream::Qt_5_13);
-    for (;;)
-    {
-        if (!nNextBlockSize)
-        {
-            if (pSocket->bytesAvailable() < sizeof(quint16))
-            {
-                break;
-            }
 
-            in >> nNextBlockSize;
+    in.setVersion(QDataStream::Qt_5_13);
+    while(true)
+    {
+        if (nNextBlockSize == 0) {
+            if (pSocket->bytesAvailable() < (int)sizeof(quint16))
+                break;
+            else
+                in >> nNextBlockSize;
         }
 
         if (pSocket->bytesAvailable() < nNextBlockSize)
-        {
             break;
-        }
+//        else{
+//            nNextBlockSize = 0;
+//            break;
+//        }
 
-        int messenger;
-        in >> messenger;
+    int messenger;
+    in >> messenger;
 
-        if(messenger%2 == 0)
+    if(messenger%2 == 0)
+    {
+        int COMMAND;
+        in >> COMMAND;;
+
+        if(COMMAND == AUTH || COMMAND == LISTEN || COMMAND == ONLINE || COMMAND == HISTORY_MESSAGE || COMMAND == ERROR)
         {
-            int COMMAND;
-            in >> COMMAND;
+            in >> messenger;
 
-            if(COMMAND == AUTH || COMMAND == LISTEN || COMMAND == ONLINE || COMMAND == HISTORY_MESSAGE)
+            if(messenger%2 != 0)
             {
+                unsigned int size_message;
+                in >> size_message;
+
+                QByteArray encrypted_message;
+
+                in >> encrypted_message;
                 in >> messenger;
 
-                if(messenger%2 != 0)
+                if(messenger%2 == 0)
                 {
-                    unsigned int size_message;
-                    in >> size_message;
-
-                    char *message = new char [size_message];
-                    //QByteArray message;
-
-                    in.readBytes(message, size_message);
-
-                    in >> messenger;
-
-                    if(messenger%2 == 0)
+                    for(int i = 0; i < (int)(encrypted_message.size()/2); i += 2)
                     {
-                        for(int i = 0; i < size_message; i++)
-                            message[i] = message[i]*messenger-size_message;
+                        char byte;
+                        byte = encrypted_message[i];
+                        encrypted_message[i] = encrypted_message[encrypted_message.size()-1-i];
+                        encrypted_message[encrypted_message.size()-1-i] = byte;
+                    }
 
-                        switch (COMMAND)
+                    for(int i = encrypted_message.size()-2; i >= 0; i--)
+                        encrypted_message[i] = encrypted_message[i] - encrypted_message[i+1];
+
+                    switch (COMMAND)
+                    {
+                    case LISTEN:
+                    {
+                        QDataStream input_message(&encrypted_message, QIODevice::ReadOnly);
+                        QString message;
+                        input_message >> message;
+
+                        ui->lW_chat->addItem(message);
+                        ui->lW_chat->scrollToBottom();
+
+                        if(!this->isActiveWindow())
                         {
-                        case LISTEN:
-                        {
-                            ui->lW_chat->addItem(message);
-                            ui->lW_chat->scrollToBottom();
-
-                            if(!this->isActiveWindow())
-                            {
-                                popupMessage->setPopupText(message);
-                                popupMessage->show();
-                                QApplication::alert(this);
-                            }
-
-                            break;
+                            popupMessage->setPopupText(message);
+                            popupMessage->show();
+                            QApplication::alert(this);
                         }
-                        case ONLINE:
-                        {
-                            QByteArray mes;
-                            QDataStream out(&mes, QIODevice::ReadWrite);
-
-                            out << message;
-
-                            QStringList listUsers;
-                            out >> listUsers;
-
-                            in >> listUsers;
-
-                            ui->lW_online->clear();
-                            ui->lW_online->addItems(listUsers);
-
-                            break;
-                        }
-                            //        case OK_DISK:
-                            //        {
-                            //            pSocket->disconnected();
-                            //            delete pSocket;
-
-
-                            //            break;
-                            //        }
-                        case HISTORY_MESSAGE:
-                        {
-                            QByteArray mes;
-                            QDataStream out(&mes, QIODevice::ReadWrite);
-
-                            out << message;
-
-                            QStringList tmp;
-                            out >> tmp;
-
-                            ui->lW_chat->addItems(tmp);
-
-                            ui->lW_chat->scrollToBottom();
-
-                            break;
-                        }
-                        case ERROR:
-                        {
-                            QMessageBox msgBox;
-                            msgBox.setText("Error!");
-                            msgBox.setInformativeText(message);
-                            msgBox.setStandardButtons(QMessageBox::Ok);
-                            msgBox.setIcon(QMessageBox::Critical);
-                            msgBox.setDefaultButton(QMessageBox::Ok);
-                            msgBox.exec();
 
                         break;
-                        }
-                        default:
-                        {
-                            break;
-                        }
-                        }
+                    }
+                    case ONLINE:
+                    {
+                        QDataStream out(&encrypted_message, QIODevice::ReadOnly);
+
+                        QStringList listUsers;
+                        out >> listUsers;
+
+                        ui->lW_online->clear();
+                        ui->lW_online->addItems(listUsers);
+
+                        break;
+                    }
+                        //        case OK_DISK:
+                        //        {
+                        //            pSocket->disconnected();
+                        //            delete pSocket;
+
+
+                        //            break;
+                        //        }
+                    case HISTORY_MESSAGE:
+                    {
+                        QDataStream out(&encrypted_message, QIODevice::ReadOnly);
+
+                        QStringList tmp;
+                        out >> tmp;
+
+                        ui->lW_chat->addItems(tmp);
+
+                        ui->lW_chat->scrollToBottom();
+
+                        break;
+                    }
+                    case ERROR:
+                    {
+                        QDataStream input_message(&encrypted_message, QIODevice::ReadOnly);
+                        QString message;
+                        input_message >> message;
+
+                        QMessageBox msgBox;
+                        msgBox.setText("Error!");
+                        msgBox.setInformativeText(message);
+                        msgBox.setStandardButtons(QMessageBox::Ok);
+                        msgBox.setIcon(QMessageBox::Critical);
+                        msgBox.setDefaultButton(QMessageBox::Ok);
+                        msgBox.exec();
+
+                        break;
+                    }
+                    default:
+                    {
+                        break;
+                    }
                     }
                 }
             }
         }
+    }
 
-        nNextBlockSize = 0;
+    nNextBlockSize = 0;
     }
 }
 
@@ -248,7 +254,7 @@ void Client::on_pB_send_clicked()
     {
         QByteArray message;
         QDataStream out(&message, QIODevice::WriteOnly);
-        out << name << ": " << ui->lE_message->text();
+        out << ui->lE_message->text();
 
         //        for(int i = 49; i < message.size(); i += 50)
         //            message.insert(i, "\n");
@@ -276,7 +282,7 @@ void GenerateMessage(int COMMAND, QByteArray &message, QByteArray &block)
     {
         messenger = 0 + rand() % 32767;
     }
-    while(messenger%2 == 0);
+    while(messenger%2 != 0);
 
     out << (quint16)0 << messenger << COMMAND;
 
@@ -284,7 +290,7 @@ void GenerateMessage(int COMMAND, QByteArray &message, QByteArray &block)
     {
         messenger = 0 + rand() % 32767;
     }
-    while(messenger%2 != 0);
+    while(messenger%2 == 0);
 
     out << messenger << message.size();
 
@@ -292,10 +298,18 @@ void GenerateMessage(int COMMAND, QByteArray &message, QByteArray &block)
     {
         messenger = 0 + rand() % 32767;
     }
-    while(messenger%2 == 0);
+    while(messenger%2 != 0);
 
-    for(int i = 0; i < message.size(); i++)
-        message[i] = (message[i] + message.size())/messenger;
+    for(int i = 0; i < message.size()-1; i++)
+        message[i] = message[i] + message[i+1];
+
+    for(int i = 0; i < (int)(message.size()/2); i += 2)
+    {
+        char byte;
+        byte = message[i];
+        message[i] = message[message.size()-1-i];
+        message[message.size()-1-i] = byte;
+    }
 
     out << message << messenger;
 

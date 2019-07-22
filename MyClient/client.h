@@ -8,6 +8,8 @@
 #include <QNetworkInterface>
 #include "popup.h"
 
+#include <QDebug>
+
 enum COMMAND { AUTH = 1, ONLINE = 2, LISTEN = 3, DISC = 4, OK_DISK = 5, HISTORY_MESSAGE = 6, ERROR = 202};
 
 namespace Ui {

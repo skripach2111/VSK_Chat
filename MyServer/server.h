@@ -9,6 +9,8 @@
 #include <QMessageBox>
 #include <vector>
 
+#include <QDebug>
+
 #define SEC_MS	1000
 #define MIN_MS	(SEC_MS * 60)
 #define HOUR_MS	(MIN_MS * 60)
